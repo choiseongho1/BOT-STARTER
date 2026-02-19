@@ -1,0 +1,44 @@
+// Core domain types used across UI, services, and infrastructure layers.
+
+export type TierGroup =
+  | "all"
+  | "unrated"
+  | "bronze"
+  | "silver"
+  | "gold"
+  | "platinum"
+  | "diamond"
+  | "ruby"
+  | "master";
+export type ProblemSortKey = "id" | "level" | "solved";
+export type SortDirection = "asc" | "desc";
+
+export interface ProblemSummary {
+  problemId: number;
+  title: string;
+  level: number;
+  tierText: string;
+  tags: string[];
+}
+
+export interface SearchResult {
+  items: ProblemSummary[];
+  total: number;
+  page: number;
+}
+
+export interface ProblemTestCase {
+  index: number;
+  input: string;
+  output: string;
+}
+
+export interface ProblemDetail {
+  problemId: number;
+  title: string;
+  url: string;
+  problem: string;
+  input: string;
+  output: string;
+  testCases: ProblemTestCase[];
+}

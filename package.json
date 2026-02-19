@@ -1,0 +1,116 @@
+{
+  "name": "boj-starter",
+  "displayName": "BOJ-STARTER",
+  "description": "백준 / Solved.ac 문제 검색 및 실행까지 가능한 Extension",
+  "icon": "media/icon.png",
+  "version": "0.1.2",
+  "publisher": "choiseongho",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/choiseongho1/BOT-STARTER"
+  },
+  "qna": "https://github.com/choiseongho1/BOT-STARTER/issues",
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:boj.sidebar"
+  ],
+  "main": "./out/extension.js",
+  "files": [
+    "out",
+    "media",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "boj-explorer",
+          "title": "BOJ-STARTER",
+          "icon": "media/boj.svg"
+        }
+      ]
+    },
+    "views": {
+      "boj-explorer": [
+        {
+          "type": "webview",
+          "id": "boj.sidebar",
+          "name": "BOJ-STARTER"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "BOJ-STARTER",
+      "properties": {
+        "bojSearch.defaultLanguage": {
+          "type": "string",
+          "default": "py",
+          "description": "Scaffold target language extension (single value). Example: py, cpp, java."
+        },
+        "bojSearch.outputDir": {
+          "type": "string",
+          "default": ".",
+          "description": "Relative output directory from selected workspace folder."
+        },
+        "bojSearch.maxRecent": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum number of recent BOJ entries to keep."
+        },
+        "bojSearch.openWebOnSelect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open BOJ problem page in browser after selecting a problem."
+        },
+        "bojSearch.runnerCommands": {
+          "type": "object",
+          "default": {
+            "py": "python",
+            "js": "node",
+            "java": "java",
+            "javac": "javac",
+            "cpp": "g++",
+            "c": "gcc",
+            "rs": "rustc",
+            "go": "go",
+            "kt": "kotlinc",
+            "swift": "swift"
+          },
+          "description": "Per-language runner/compile command map. Override when command names differ in your environment."
+        },
+        "bojSearch.compilerOptions": {
+          "type": "object",
+          "default": {
+            "cpp": "",
+            "c": "",
+            "rs": ""
+          },
+          "description": "Optional compile options for native languages. Example: {\"cpp\":\"-std=c++17\",\"c\":\"-std=c11\"}."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "eslint src --ext .ts",
+    "package:vsix": "npx @vscode/vsce package --allow-missing-repository",
+    "publish:marketplace": "npx @vscode/vsce publish --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/vscode": "^1.92.0",
+    "eslint": "^9.11.1",
+    "typescript": "^5.6.2"
+  }
+}
