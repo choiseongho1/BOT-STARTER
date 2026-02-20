@@ -34,88 +34,124 @@ export class ProblemDetailPanel {
     private readonly userTestCaseService: UserTestCaseService
   ) {}
 
+  // 패널 열기 진입점: 패널 생성/재사용, 문제 로드, 필요 시 reveal 순으로 처리한다.
   async show(problemId: number, reveal: boolean): Promise<void> {
+    // 사이드바의 자동 동기화(reveal=false)에서는 기존 패널이 없으면 조용히 종료한다.
     if (!this.panel && !reveal) {
       return;
     }
 
-    if (!this.panel) {
-      this.panel = vscode.window.createWebviewPanel(
-        "boj.problemDetail",
-        "BOJ Problem",
-        vscode.ViewColumn.Beside,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true
-        }
-      );
+    const panel = this.ensurePanel();
+    await this.loadDetailIfNeeded(problemId, panel);
 
-      this.panel.onDidDispose(() => {
-        this.panel = undefined;
-        this.currentDetail = undefined;
-        this.currentCases = [];
-      });
-
-      this.panel.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
-        const message = this.parseMessage(rawMessage);
-        if (!message) {
-          return;
-        }
-
-        try {
-          if (message.type === "openWeb") {
-            await vscode.env.openExternal(
-              vscode.Uri.parse(`https://www.acmicpc.net/problem/${message.problemId}`)
-            );
-            return;
-          }
-
-          if (message.type === "copyInput" || message.type === "copyOutput") {
-            await vscode.env.clipboard.writeText(message.value);
-            await this.postRunStatus("클립보드에 복사했습니다.", false);
-            return;
-          }
-
-          if (message.type === "addCase") {
-            await this.handleAddCase(message.input, message.output);
-            return;
-          }
-
-          if (message.type === "updateCase") {
-            await this.handleUpdateCase(message.caseId, message.input, message.output);
-            return;
-          }
-
-          if (message.type === "deleteCase") {
-            await this.handleDeleteCase(message.caseId);
-            return;
-          }
-
-          if (message.type === "runAll" || message.type === "runCase") {
-            await this.handleRun(message);
-          }
-        } catch (error) {
-          const messageText = error instanceof Error ? error.message : String(error);
-          await this.postRunStatus(messageText, true);
-          vscode.window.showErrorMessage(`테스트 실행 오류: ${messageText}`);
-        }
-      });
-    }
-
-    if (this.currentDetail?.problemId !== problemId) {
-      const detail = await this.detailService.getProblemDetail(problemId);
-      const userCases = this.userTestCaseService.list(problemId);
-
-      this.currentDetail = detail;
-      this.currentCases = this.buildCases(detail, userCases);
-
-      this.panel.title = `BOJ ${detail.problemId} - ${detail.title}`;
-      this.panel.webview.html = this.getHtml(detail, this.currentCases);
-    }
-
+    // reveal 순서는 기존 동작과 동일하게 마지막에 유지한다.
     if (reveal) {
-      this.panel.reveal(this.panel.viewColumn ?? vscode.ViewColumn.Beside);
+      panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Beside);
     }
+  }
+
+  // 패널이 있으면 재사용하고, 없으면 생성/핸들러 바인딩까지 완료해서 반환한다.
+  private ensurePanel(): vscode.WebviewPanel {
+    if (this.panel) {
+      return this.panel;
+    }
+
+    const created = vscode.window.createWebviewPanel(
+      "boj.problemDetail",
+      "BOJ Problem",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true
+      }
+    );
+
+    this.panel = created;
+
+    // dispose 시 메모리 상태를 반드시 초기화해서 재오픈 시 stale 상태를 차단한다.
+    created.onDidDispose(() => {
+      this.panel = undefined;
+      this.currentDetail = undefined;
+      this.currentCases = [];
+    });
+
+    // 웹뷰 메시지는 단일 진입점으로 모아서 타입 파싱/예외 처리 경계를 명확히 둔다.
+    created.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
+      await this.handlePanelMessage(rawMessage);
+    });
+
+    return created;
+  }
+
+  // 문제가 바뀐 경우에만 상세를 다시 로드하고 HTML을 재생성한다.
+  private async loadDetailIfNeeded(problemId: number, panel: vscode.WebviewPanel): Promise<void> {
+    if (this.currentDetail?.problemId === problemId) {
+      return;
+    }
+
+    const detail = await this.detailService.getProblemDetail(problemId);
+    const userCases = this.userTestCaseService.list(problemId);
+
+    this.currentDetail = detail;
+    this.currentCases = this.buildCases(detail, userCases);
+
+    panel.title = `BOJ ${detail.problemId} - ${detail.title}`;
+    panel.webview.html = this.getHtml(detail, this.currentCases);
+  }
+
+  // 웹뷰에서 올라온 메시지의 공통 처리 경계.
+  private async handlePanelMessage(rawMessage: unknown): Promise<void> {
+    const message = this.parseMessage(rawMessage);
+    if (!message) {
+      return;
+    }
+
+    try {
+      await this.dispatchPanelMessage(message);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await this.postRunStatus(messageText, true);
+      vscode.window.showErrorMessage(`테스트 실행 오류: ${messageText}`);
+    }
+  }
+
+  // 타입별 액션 디스패치. 분기 순서/행동은 기존과 동일하게 유지한다.
+  private async dispatchPanelMessage(message: PanelMessage): Promise<void> {
+    switch (message.type) {
+      case "openWeb":
+        await this.openProblemWeb(message.problemId);
+        return;
+      case "copyInput":
+      case "copyOutput":
+        await this.handleCopyToClipboard(message.value);
+        return;
+      case "addCase":
+        await this.handleAddCase(message.input, message.output);
+        return;
+      case "updateCase":
+        await this.handleUpdateCase(message.caseId, message.input, message.output);
+        return;
+      case "deleteCase":
+        await this.handleDeleteCase(message.caseId);
+        return;
+      case "runAll":
+      case "runCase":
+        await this.handleRun(message);
+        return;
+      default:
+        return;
+    }
+  }
+
+  // 원문 문제 페이지를 외부 브라우저로 연다.
+  private async openProblemWeb(problemId: number): Promise<void> {
+    await vscode.env.openExternal(vscode.Uri.parse(`https://www.acmicpc.net/problem/${problemId}`));
+  }
+
+  // 입력/출력 복사 액션의 공통 처리.
+  private async handleCopyToClipboard(value: string): Promise<void> {
+    await vscode.env.clipboard.writeText(value);
+    await this.postRunStatus("클립보드에 복사했습니다.", false);
   }
 
   private async handleAddCase(input: string, output: string): Promise<void> {
@@ -175,6 +211,7 @@ export class ProblemDetailPanel {
         ? this.toRunnerCases(this.currentCases)
         : this.toRunnerCases(this.currentCases.filter((testCase) => testCase.key === message.caseKey));
 
+    // runCase는 단일 케이스만, runAll은 현재 렌더링된 전체 케이스를 그대로 사용한다.
     if (runCases.length === 0) {
       await this.postRunStatus("실행할 테스트케이스가 없습니다.", true);
       return;
@@ -199,6 +236,7 @@ export class ProblemDetailPanel {
       return;
     }
 
+    // 사용자 케이스 변경 시 샘플+사용자 병합 인덱스를 다시 계산한 뒤 웹뷰 일부만 교체한다.
     const userCases = this.userTestCaseService.list(this.currentDetail.problemId);
     this.currentCases = this.buildCases(this.currentDetail, userCases);
 
@@ -229,6 +267,7 @@ export class ProblemDetailPanel {
       source: "sample"
     }));
 
+    // 사용자 케이스 인덱스는 샘플 마지막 다음 번호부터 순차 부여해 UI 가독성을 유지한다.
     const startIndex =
       sampleCases.reduce((maxValue, item) => Math.max(maxValue, item.index), 0) + 1;
 

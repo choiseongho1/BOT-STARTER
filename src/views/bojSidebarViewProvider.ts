@@ -45,6 +45,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
 
   constructor(private readonly deps: SidebarDeps) {}
 
+  // 사이드바 웹뷰를 초기화하고, 메시지/가시성 이벤트를 단일 진입점으로 연결한다.
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
     webviewView.webview.options = {
@@ -54,75 +55,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
-      const message = this.parseMessage(rawMessage);
-      if (!message) {
-        return;
-      }
-
-      try {
-        if (message.type === "ready") {
-          await this.postSettings();
-          await this.postRecents();
-          await this.autoLoadCurrentProblemFromEditor();
-          return;
-        }
-
-        if (message.type === "openSettings") {
-          await vscode.commands.executeCommand("workbench.action.openSettings", "bojSearch");
-          return;
-        }
-
-        if (message.type === "clearRecent") {
-          await this.deps.recentService.clear();
-          await this.postRecents();
-          await this.postStatus("최근 기록을 비웠습니다.");
-          return;
-        }
-
-        if (message.type === "search") {
-          await this.handleSearch(message);
-          return;
-        }
-
-        if (message.type === "loadResult" || message.type === "loadRecent") {
-          await this.loadProblemPanel(message.problemId, true);
-          return;
-        }
-
-        if (message.type === "openResult" || message.type === "openRecent") {
-          await this.openProblemWeb(message.problemId);
-          return;
-        }
-
-        if (message.type === "createResult") {
-          const selected = await this.resolveProblemFromSearch(message.problemId);
-          if (!selected) {
-            await this.postError("검색 결과에서 문제를 찾지 못했습니다. 다시 검색해 주세요.");
-            return;
-          }
-
-          await this.createProblem(selected);
-          await this.loadProblemPanel(selected.problemId, true);
-          return;
-        }
-
-        if (message.type === "createRecent") {
-          const recent = this.deps.recentService
-            .list()
-            .find((item) => item.problemId === message.problemId);
-
-          if (!recent) {
-            await this.postError("최근 목록에서 문제를 찾지 못했습니다.");
-            return;
-          }
-
-          await this.createProblem(recent);
-          await this.loadProblemPanel(recent.problemId, true);
-        }
-      } catch (error) {
-        const messageText = error instanceof Error ? error.message : String(error);
-        await this.postError(messageText);
-      }
+      await this.handleSidebarMessage(rawMessage);
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -134,7 +67,95 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  // 웹뷰 메시지 처리 공통 경계: 파싱 실패/예외 처리를 한 곳에서 관리한다.
+  private async handleSidebarMessage(rawMessage: unknown): Promise<void> {
+    const message = this.parseMessage(rawMessage);
+    if (!message) {
+      return;
+    }
+
+    try {
+      await this.dispatchSidebarMessage(message);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await this.postError(messageText);
+    }
+  }
+
+  // 메시지 타입별 액션 라우팅. 기존 분기 순서와 동작을 그대로 유지한다.
+  private async dispatchSidebarMessage(message: SidebarMessage): Promise<void> {
+    switch (message.type) {
+      case "ready":
+        await this.handleReadyMessage();
+        return;
+      case "openSettings":
+        await vscode.commands.executeCommand("workbench.action.openSettings", "bojSearch");
+        return;
+      case "clearRecent":
+        await this.handleClearRecentMessage();
+        return;
+      case "search":
+        await this.handleSearch(message);
+        return;
+      case "loadResult":
+      case "loadRecent":
+        await this.loadProblemPanel(message.problemId, true);
+        return;
+      case "openResult":
+      case "openRecent":
+        await this.openProblemWeb(message.problemId);
+        return;
+      case "createResult":
+        await this.handleCreateFromSearchMessage(message.problemId);
+        return;
+      case "createRecent":
+        await this.handleCreateFromRecentMessage(message.problemId);
+        return;
+      default:
+        return;
+    }
+  }
+
+  // ready 이후 초기 동기화 순서(설정→최근→자동 로드)는 UX/메시지 타이밍에 영향이 있어 유지한다.
+  private async handleReadyMessage(): Promise<void> {
+    await this.postSettings();
+    await this.postRecents();
+    await this.autoLoadCurrentProblemFromEditor();
+  }
+
+  // 최근 기록 비우기 처리.
+  private async handleClearRecentMessage(): Promise<void> {
+    await this.deps.recentService.clear();
+    await this.postRecents();
+    await this.postStatus("최근 기록을 비웠습니다.");
+  }
+
+  // 검색 결과에서 선택한 문제를 파일 생성 후 문제 패널로 연다.
+  private async handleCreateFromSearchMessage(problemId: number): Promise<void> {
+    const selected = await this.resolveProblemFromSearch(problemId);
+    if (!selected) {
+      await this.postError("검색 결과에서 문제를 찾지 못했습니다. 다시 검색해 주세요.");
+      return;
+    }
+
+    await this.createProblem(selected);
+    await this.loadProblemPanel(selected.problemId, true);
+  }
+
+  // 최근 목록에서 선택한 문제를 파일 생성 후 문제 패널로 연다.
+  private async handleCreateFromRecentMessage(problemId: number): Promise<void> {
+    const recent = this.deps.recentService.list().find((item) => item.problemId === problemId);
+    if (!recent) {
+      await this.postError("최근 목록에서 문제를 찾지 못했습니다.");
+      return;
+    }
+
+    await this.createProblem(recent);
+    await this.loadProblemPanel(recent.problemId, true);
+  }
+
   private async autoLoadCurrentProblemFromEditor(): Promise<void> {
+    // 현재 활성 편집기 파일명에서 문제 번호를 추론해 사이드바/우측 패널을 느슨하게 동기화한다.
     const problemId = this.detectProblemIdFromActiveEditor();
     if (!problemId || problemId === this.currentProblemId) {
       return;
@@ -155,6 +176,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
     const directorySegments = filePath.split(/[\\/]/).filter(Boolean).reverse();
     const candidates = [basenameWithoutExtension, basenameWithExtension, ...directorySegments];
 
+    // 다양한 네이밍 관례(1000.py, 1000번, 경로 내 숫자)를 순서대로 허용해 탐지율을 높인다.
     for (const candidate of candidates) {
       const exact = candidate.match(/^(\d+)$/);
       if (exact) {
@@ -176,6 +198,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async loadProblemPanel(problemId: number, reveal: boolean): Promise<void> {
+    // currentProblemId는 자동 동기화 중복 호출을 줄이기 위한 마지막 로드 기준값이다.
     this.currentProblemId = problemId;
     await this.deps.showProblemPanel(problemId, reveal);
     await this.postStatus(`문제 패널 로드: ${problemId}번`);
@@ -185,6 +208,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
     const query = message.query.trim();
 
     if (!query) {
+      // 빈 검색어는 즉시 UI를 초기 상태로 되돌린다.
       this.latestProblemMap.clear();
       await this.view?.webview.postMessage({
         type: "searchResult",
@@ -205,6 +229,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
       direction: message.direction
     });
 
+    // createResult에서 O(1)로 재사용할 수 있도록 최신 검색 결과를 맵으로 캐시한다.
     this.latestProblemMap.clear();
     for (const item of result.items) {
       this.latestProblemMap.set(item.problemId, item);
