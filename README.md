@@ -1,13 +1,8 @@
 # BOJ-STARTER
-
-<hr>
-
 BOJ-STARTER는 [백준](https://www.acmicpc.net/)의 문제를 빠르고 쉽게 검색하고 풀 수 있도록 도와주는 Visual Studio Code 의 Extension 입니다.
 해당 Extension을 사용하면 vscode 내에서 **문제를 검색해서 문제 파일을 열고, 문제 정보를 확인**하며, **테스트 케이스의 실행/추가/수정/삭제** 까지 쉽게 할 수 있습니다.
 
 # 주요 기능
-
-<hr>
 ![BOJ Starter Demo](media/test1.gif)
 ## 1. 문제 찾기 (좌측 패널)
 * 문제를 제목, 태그, 번호로 검색이 가능합니다.
@@ -21,16 +16,11 @@ BOJ-STARTER는 [백준](https://www.acmicpc.net/)의 문제를 빠르고 쉽게 
 * 사용자가 원하는 테스트 케이스를 추가/수정/삭제가 가능합니다.
 ## 5. 테스트 케이스 실행
 * 기본 테스트 케이스와 사용자가 추가한 테스트 케이스 모두 실행 가능합니다.
+
 # 요구 사항
-
-<hr>
-
 BOJ-STARTER를 사용하기 위해서 해당 **언어의 실행 환경이 반드시 필요**합니다.
 
 # 설정
-
-<hr>
-
 * 좌측 패널의 `설정 열기` 버튼
 * vscode 설정에서 bojSearch 검색
 
