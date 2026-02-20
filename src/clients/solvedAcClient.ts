@@ -22,6 +22,12 @@ interface SolvedAcProblem {
   titleKo?: string;
   titles?: SolvedAcTitle[];
   level: number;
+  acceptedUserCount?: number;
+  averageTries?: number;
+  votedUserCount?: number;
+  isPartial?: boolean;
+  official?: boolean;
+  sprout?: boolean;
   tags?: SolvedAcTag[];
 }
 
@@ -41,6 +47,8 @@ interface SearchRequestOptions {
   direction: SortDirection;
 }
 
+type ApiSortDirection = "asc" | "desc";
+
 export class SolvedAcClient {
   private readonly baseUrl = "https://solved.ac/api/v3";
   private readonly timeoutMs = 8_000;
@@ -56,6 +64,7 @@ export class SolvedAcClient {
     const page = options.page ?? 1;
     const sort = options.sort ?? "id";
     const direction = options.direction ?? "asc";
+    const apiDirection = this.resolveApiDirection(direction);
     const cacheKey = `${query}::${page}::${sort}::${direction}`;
     const cached = this.cache.get(cacheKey);
 
@@ -64,7 +73,7 @@ export class SolvedAcClient {
     }
 
     const encodedQuery = encodeURIComponent(query);
-    const url = `${this.baseUrl}/search/problem?query=${encodedQuery}&page=${page}&sort=${sort}&direction=${direction}`;
+    const url = `${this.baseUrl}/search/problem?query=${encodedQuery}&page=${page}&sort=${sort}&direction=${apiDirection}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -105,6 +114,10 @@ export class SolvedAcClient {
     }
   }
 
+  private resolveApiDirection(direction: SortDirection): ApiSortDirection {
+    return direction === "desc" || direction === "rankDesc" ? "desc" : "asc";
+  }
+
   private mapProblem(item: SolvedAcProblem): ProblemSummary {
     const title =
       item.titleKo ??
@@ -121,7 +134,13 @@ export class SolvedAcClient {
       title,
       level: item.level,
       tierText: tierLabelFromLevel(item.level),
-      tags
+      tags,
+      acceptedUserCount: item.acceptedUserCount,
+      averageTries: item.averageTries,
+      votedUserCount: item.votedUserCount,
+      isPartial: item.isPartial,
+      official: item.official,
+      sprout: item.sprout
     };
   }
 

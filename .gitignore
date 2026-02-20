@@ -1,2 +1,8 @@
 # dependencies
 node_modules/
+
+# local agent notes
+AGENTS.md
+
+# packaged extension artifacts
+*.vsix

@@ -13,13 +13,14 @@ class SolvedAcClient {
         const page = options.page ?? 1;
         const sort = options.sort ?? "id";
         const direction = options.direction ?? "asc";
+        const apiDirection = this.resolveApiDirection(direction);
         const cacheKey = `${query}::${page}::${sort}::${direction}`;
         const cached = this.cache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
             return cached.result;
         }
         const encodedQuery = encodeURIComponent(query);
-        const url = `${this.baseUrl}/search/problem?query=${encodedQuery}&page=${page}&sort=${sort}&direction=${direction}`;
+        const url = `${this.baseUrl}/search/problem?query=${encodedQuery}&page=${page}&sort=${sort}&direction=${apiDirection}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
         try {
@@ -52,6 +53,9 @@ class SolvedAcClient {
             clearTimeout(timeout);
         }
     }
+    resolveApiDirection(direction) {
+        return direction === "desc" || direction === "rankDesc" ? "desc" : "asc";
+    }
     mapProblem(item) {
         const title = item.titleKo ??
             item.titles?.find((entry) => entry.language === "ko")?.title ??
@@ -65,7 +69,13 @@ class SolvedAcClient {
             title,
             level: item.level,
             tierText: (0, tiers_1.tierLabelFromLevel)(item.level),
-            tags
+            tags,
+            acceptedUserCount: item.acceptedUserCount,
+            averageTries: item.averageTries,
+            votedUserCount: item.votedUserCount,
+            isPartial: item.isPartial,
+            official: item.official,
+            sprout: item.sprout
         };
     }
     pickTagName(tag) {

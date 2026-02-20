@@ -11,7 +11,7 @@ export type TierGroup =
   | "ruby"
   | "master";
 export type ProblemSortKey = "id" | "level" | "solved";
-export type SortDirection = "asc" | "desc";
+export type SortDirection = "asc" | "desc" | "rankAsc" | "rankDesc";
 
 export interface ProblemSummary {
   problemId: number;
@@ -19,6 +19,12 @@ export interface ProblemSummary {
   level: number;
   tierText: string;
   tags: string[];
+  acceptedUserCount?: number;
+  averageTries?: number;
+  votedUserCount?: number;
+  isPartial?: boolean;
+  official?: boolean;
+  sprout?: boolean;
 }
 
 export interface SearchResult {

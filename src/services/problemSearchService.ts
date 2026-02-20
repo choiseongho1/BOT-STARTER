@@ -6,7 +6,7 @@ import {
   SortDirection,
   TierGroup
 } from "../types/problem";
-import { inTierGroup, RANK_GROUPS, tierClauseForGroup } from "../utils/tiers";
+import { inTierGroup, tierClauseForGroup } from "../utils/tiers";
 
 interface SearchPagedOptions {
   tierGroup: TierGroup;
@@ -15,11 +15,7 @@ interface SearchPagedOptions {
   direction: SortDirection;
 }
 
-export interface TierCountResult {
-  total: number;
-  sum: number;
-  counts: Record<Exclude<TierGroup, "all">, number>;
-}
+const SEARCH_PAGE_SIZE = 50;
 
 export class ProblemSearchService {
   constructor(private readonly solvedAcClient: SolvedAcClient) {}
@@ -47,87 +43,150 @@ export class ProblemSearchService {
     }
 
     const tierAwareQuery = this.applyTierFilter(query, options.tierGroup);
+    if (this.shouldUseSplitRankAscSearch(options, query)) {
+      return this.searchRankAscAllWithUnratedLast(tierAwareQuery, options.page);
+    }
+
+    const requestedSort = this.resolveRequestedSort(options.sort, options.direction);
+    const requestedDirection = this.resolveRequestedDirection(options.direction);
+
     const searchResult = await this.solvedAcClient.searchProblems(tierAwareQuery, {
       page: options.page,
-      sort: options.sort,
-      direction: options.direction
+      sort: requestedSort,
+      direction: requestedDirection
     });
+
+    const filteredItems = searchResult.items.filter((item) => inTierGroup(item.level, options.tierGroup));
+    const sortedItems = this.isRankDirection(options.direction)
+      ? this.sortItemsByRank(filteredItems, options.direction)
+      : filteredItems;
 
     return {
       ...searchResult,
-      items: searchResult.items.filter((item) => inTierGroup(item.level, options.tierGroup))
+      items: sortedItems
     };
   }
 
-  async getTierCounts(
-    input: string,
-    tierGroup: TierGroup,
-    knownTotal?: number
-  ): Promise<TierCountResult> {
-    const query = this.normalizeQuery(input);
-    if (!query) {
+  private shouldUseSplitRankAscSearch(options: SearchPagedOptions, query: string): boolean {
+    return options.direction === "rankAsc" && options.tierGroup === "all" && !this.hasExplicitTierSyntax(query);
+  }
+
+  private async searchRankAscAllWithUnratedLast(query: string, page: number): Promise<SearchResult> {
+    const ratedQuery = `${query} *1..31`.trim();
+    const unratedQuery = `${query} *0`.trim();
+
+    const ratedFirst = await this.solvedAcClient.searchProblems(ratedQuery, {
+      page: 1,
+      sort: "level",
+      direction: "asc"
+    });
+    const unratedFirst = await this.solvedAcClient.searchProblems(unratedQuery, {
+      page: 1,
+      sort: "id",
+      direction: "asc"
+    });
+
+    const ratedTotal = ratedFirst.total;
+    const unratedTotal = unratedFirst.total;
+    const total = ratedTotal + unratedTotal;
+    const ratedPageCount = Math.ceil(ratedTotal / SEARCH_PAGE_SIZE);
+
+    if (page <= ratedPageCount || unratedTotal === 0) {
+      const ratedPage = page === 1 ? ratedFirst : await this.solvedAcClient.searchProblems(ratedQuery, {
+        page,
+        sort: "level",
+        direction: "asc"
+      });
+
       return {
-        total: 0,
-        sum: 0,
-        counts: {
-          unrated: 0,
-          bronze: 0,
-          silver: 0,
-          gold: 0,
-          platinum: 0,
-          diamond: 0,
-          ruby: 0,
-          master: 0
-        }
+        total,
+        page,
+        items: this.sortItemsByRank(ratedPage.items, "rankAsc")
       };
     }
 
-    const baseQuery = this.applyTierFilter(query, tierGroup);
-    const total =
-      knownTotal ??
-      (
-        await this.solvedAcClient.searchProblems(baseQuery, {
-          page: 1,
-          sort: "id",
-          direction: "asc"
-        })
-      ).total;
-
-    const countValues = await Promise.all(
-      RANK_GROUPS.map(async (rank) => {
-        const rankQuery = `${baseQuery} ${tierClauseForGroup(rank)}`.trim();
-        const result = await this.solvedAcClient.searchProblems(rankQuery, {
-          page: 1,
+    const unratedPageNumber = page - ratedPageCount;
+    const unratedPage = unratedPageNumber === 1
+      ? unratedFirst
+      : await this.solvedAcClient.searchProblems(unratedQuery, {
+          page: unratedPageNumber,
           sort: "id",
           direction: "asc"
         });
 
-        return [rank, result.total] as const;
-      })
-    );
-
-    const counts = {
-      unrated: 0,
-      bronze: 0,
-      silver: 0,
-      gold: 0,
-      platinum: 0,
-      diamond: 0,
-      ruby: 0,
-      master: 0
-    } as Record<Exclude<TierGroup, "all">, number>;
-
-    for (const [rank, count] of countValues) {
-      counts[rank] = count;
-    }
-
-    const sum = Object.values(counts).reduce((acc, value) => acc + value, 0);
-
     return {
       total,
-      sum,
-      counts
+      page,
+      items: this.sortItemsByRank(unratedPage.items, "rankAsc")
     };
+  }
+
+  private resolveRequestedSort(sort: ProblemSortKey, direction: SortDirection): ProblemSortKey {
+    return this.isRankDirection(direction) ? "level" : sort;
+  }
+
+  private resolveRequestedDirection(direction: SortDirection): "asc" | "desc" {
+    return direction === "desc" || direction === "rankDesc" ? "desc" : "asc";
+  }
+
+  private isRankDirection(direction: SortDirection): direction is "rankAsc" | "rankDesc" {
+    return direction === "rankAsc" || direction === "rankDesc";
+  }
+
+  private sortItemsByRank(
+    items: ProblemSummary[],
+    direction: Extract<SortDirection, "rankAsc" | "rankDesc">
+  ): ProblemSummary[] {
+    return [...items].sort((left, right) => this.compareByRank(left, right, direction));
+  }
+
+  private compareByRank(
+    left: ProblemSummary,
+    right: ProblemSummary,
+    direction: Extract<SortDirection, "rankAsc" | "rankDesc">
+  ): number {
+    const leftIsUnrated = left.level <= 0;
+    const rightIsUnrated = right.level <= 0;
+    if (leftIsUnrated && rightIsUnrated) {
+      return left.problemId - right.problemId;
+    }
+
+    if (leftIsUnrated) {
+      return 1;
+    }
+
+    if (rightIsUnrated) {
+      return -1;
+    }
+
+    const leftGroup = this.rankGroupIndex(left.level);
+    const rightGroup = this.rankGroupIndex(right.level);
+
+    if (leftGroup !== rightGroup) {
+      return direction === "rankAsc" ? leftGroup - rightGroup : rightGroup - leftGroup;
+    }
+
+    if (left.level !== right.level) {
+      return direction === "rankAsc" ? left.level - right.level : right.level - left.level;
+    }
+
+    return left.problemId - right.problemId;
+  }
+
+  private rankGroupIndex(level: number): number {
+    if (level <= 0) {
+      return 7;
+    }
+
+    if (level === 31) {
+      return 6;
+    }
+
+    if (level <= 30) {
+      return Math.floor((level - 1) / 5);
+    }
+
+    return 7;
   }
 
   private normalizeQuery(input: string): string {
@@ -151,10 +210,14 @@ export class ProblemSearchService {
     }
 
     // If user already supplied tier syntax, keep original query untouched.
-    if (/\btier:|\*(?:[0-9]|[bsgpdru])/i.test(query)) {
+    if (this.hasExplicitTierSyntax(query)) {
       return query;
     }
 
     return `${query} ${tierClauseForGroup(tierGroup)}`;
+  }
+
+  private hasExplicitTierSyntax(query: string): boolean {
+    return /\btier:|\*(?:[0-9]|[bsgpdru])/i.test(query);
   }
 }

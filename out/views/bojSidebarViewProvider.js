@@ -169,16 +169,6 @@ class BojSidebarViewProvider {
                 type: "searchResult",
                 items: [],
                 total: 0,
-                tierCounts: {
-                    unrated: 0,
-                    bronze: 0,
-                    silver: 0,
-                    gold: 0,
-                    platinum: 0,
-                    diamond: 0,
-                    ruby: 0,
-                    master: 0
-                },
                 page: 1,
                 hasPrev: false,
                 hasNext: false
@@ -192,7 +182,6 @@ class BojSidebarViewProvider {
             sort: message.sort,
             direction: message.direction
         });
-        const tierCountResult = await this.deps.problemSearchService.getTierCounts(query, message.tierGroup, result.total);
         this.latestProblemMap.clear();
         for (const item of result.items) {
             this.latestProblemMap.set(item.problemId, item);
@@ -203,7 +192,6 @@ class BojSidebarViewProvider {
             type: "searchResult",
             items: result.items,
             total: result.total,
-            tierCounts: tierCountResult.counts,
             page: result.page,
             hasPrev,
             hasNext
@@ -317,11 +305,17 @@ class BojSidebarViewProvider {
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 12px;
+      padding: 10px;
       background: var(--vscode-editor-background);
       color: var(--vscode-editor-foreground);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
+      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
     h1 {
@@ -338,11 +332,43 @@ class BojSidebarViewProvider {
     }
 
     .section {
-      margin-top: 12px;
       background: var(--vscode-editorWidget-background);
       border: 1px solid var(--vscode-panel-border);
       border-radius: 12px;
       padding: 10px;
+    }
+
+    .section-search {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section-recent {
+      flex: 0 0 auto;
+    }
+
+    .section-recent.collapsed #recentBody {
+      display: none;
+    }
+
+    .recent-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .recent-header .section-title {
+      margin: 0;
+    }
+
+    .collapse-toggle {
+      width: auto;
+      padding: 4px 10px;
+      font-size: 11px;
+      line-height: 1.5;
     }
 
     .section-title {
@@ -381,32 +407,49 @@ class BojSidebarViewProvider {
 
     .small { color: var(--vscode-descriptionForeground); font-size: 11px; }
 
-    .pager { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .meta-line {
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      line-height: 1.4;
+    }
 
-    .rank-grid {
-      margin-top: 6px;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .badge-row {
+      display: flex;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
-    .rank {
+    .badge {
+      display: inline-flex;
+      align-items: center;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 7px;
-      padding: 6px;
-      background: var(--vscode-sideBar-background);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-editorWidget-background);
+      line-height: 1.5;
     }
 
-    .rank-name { font-size: 10px; color: var(--vscode-descriptionForeground); }
-    .rank-count { margin-top: 2px; font-size: 13px; font-weight: 700; }
+    .pager { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
     .list {
       display: grid;
       gap: 6px;
       margin-top: 6px;
-      max-height: 280px;
       overflow: auto;
       padding-right: 2px;
+      min-height: 0;
+    }
+
+    #resultList {
+      flex: 1 1 auto;
+      max-height: none;
+      margin-top: 8px;
+    }
+
+    #recentList {
+      max-height: 220px;
     }
 
     .item {
@@ -420,8 +463,34 @@ class BojSidebarViewProvider {
 
     .item-title { line-height: 1.35; color: var(--vscode-editor-foreground); }
 
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .title-row .item-title {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .rank-chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 10px;
+      line-height: 1.5;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-editorWidget-background);
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
     .status {
-      margin-top: 10px;
+      margin-top: 8px;
       min-height: 14px;
       color: var(--vscode-testing-iconPassed, #56c9a3);
       line-height: 1.3;
@@ -433,12 +502,12 @@ class BojSidebarViewProvider {
   </style>
 </head>
 <body>
-  <section class="section" style="margin-top: 0;">
+  <section class="section">
     <h1>BOJ-STARTER</h1>
     <div class="subtitle">좌측은 검색/생성 허브, 문제 상세/테스트케이스는 우측 탭 패널에서 엽니다.</div>
   </section>
 
-  <section class="section">
+  <section class="section section-search">
     <h2 class="section-title">문제 검색</h2>
     <div class="row">
       <input id="queryInput" placeholder="번호/제목/태그 (예: 1000, A+B, #dp)" />
@@ -465,6 +534,8 @@ class BojSidebarViewProvider {
       <select id="directionSelect">
         <option value="asc">오름차순</option>
         <option value="desc">내림차순</option>
+        <option value="rankAsc">랭크 오름차순 (브론즈→마스터, 언랭크 마지막)</option>
+        <option value="rankDesc">랭크 내림차순 (마스터→브론즈, 언랭크 마지막)</option>
       </select>
     </div>
 
@@ -477,20 +548,23 @@ class BojSidebarViewProvider {
       <div id="totalLabel" class="small">총 0개</div>
     </div>
 
-    <div id="rankGrid" class="rank-grid"></div>
     <div id="resultList" class="list"></div>
+    <div id="status" class="status"></div>
   </section>
 
-  <section class="section">
-    <h2 class="section-title">최근 문제</h2>
-    <div class="row">
-      <button id="clearRecentBtn">최근 기록 비우기</button>
-      <button id="openSettingsBtn">설정 열기</button>
+  <section id="recentSection" class="section section-recent collapsed">
+    <div class="recent-header">
+      <h2 class="section-title">최근 문제</h2>
+      <button id="toggleRecentBtn" class="collapse-toggle" aria-controls="recentBody" aria-expanded="false">펼치기</button>
     </div>
-    <div id="recentList" class="list"></div>
+    <div id="recentBody">
+      <div class="row" style="margin-top: 8px;">
+        <button id="clearRecentBtn">최근 기록 비우기</button>
+        <button id="openSettingsBtn">설정 열기</button>
+      </div>
+      <div id="recentList" class="list"></div>
+    </div>
   </section>
-
-  <div id="status" class="status"></div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -504,33 +578,27 @@ class BojSidebarViewProvider {
     const nextBtn = document.getElementById('nextBtn');
     const pageLabel = document.getElementById('pageLabel');
     const totalLabel = document.getElementById('totalLabel');
-    const rankGrid = document.getElementById('rankGrid');
 
     const resultList = document.getElementById('resultList');
     const recentList = document.getElementById('recentList');
+    const recentSection = document.getElementById('recentSection');
+    const recentBody = document.getElementById('recentBody');
+    const toggleRecentBtn = document.getElementById('toggleRecentBtn');
 
     const languageLabel = document.getElementById('languageLabel');
     const clearRecentBtn = document.getElementById('clearRecentBtn');
     const openSettingsBtn = document.getElementById('openSettingsBtn');
     const statusEl = document.getElementById('status');
 
-    const rankOrder = ['unrated', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'ruby', 'master'];
-    const rankLabels = {
-      unrated: 'Unrated',
-      bronze: 'Bronze',
-      silver: 'Silver',
-      gold: 'Gold',
-      platinum: 'Platinum',
-      diamond: 'Diamond',
-      ruby: 'Ruby',
-      master: 'Master'
-    };
+    const persisted = vscode.getState();
+    let viewState = persisted && typeof persisted === 'object' ? persisted : {};
 
     let selectedTier = 'all';
     let currentPage = 1;
     let hasPrev = false;
     let hasNext = false;
     let debounceTimer = undefined;
+    let isRecentCollapsed = typeof viewState.recentCollapsed === 'boolean' ? viewState.recentCollapsed : true;
 
     function escapeHtml(value) {
       return String(value)
@@ -552,23 +620,28 @@ class BojSidebarViewProvider {
       nextBtn.disabled = !hasNext;
     }
 
-    function renderRankCounts(counts) {
-      const source = counts && typeof counts === 'object' ? counts : {};
-      const cards = rankOrder.map((rankKey) => {
-        const count = Number(source[rankKey] || 0);
-        return '<div class="rank">'
-          + '<div class="rank-name">' + escapeHtml(rankLabels[rankKey]) + '</div>'
-          + '<div class="rank-count">' + escapeHtml(count) + '</div>'
-          + '</div>';
-      });
-
-      rankGrid.innerHTML = cards.join('');
-    }
-
     function renderLanguageLabel(language) {
       const normalized = String(language || '').trim().toLowerCase();
       const fallback = normalized || 'py';
       languageLabel.textContent = '파일 생성 언어: .' + fallback;
+    }
+
+    function setRecentCollapsed(collapsed) {
+      isRecentCollapsed = Boolean(collapsed);
+      recentSection.classList.toggle('collapsed', isRecentCollapsed);
+      recentBody.hidden = isRecentCollapsed;
+      toggleRecentBtn.textContent = isRecentCollapsed ? '펼치기' : '접기';
+      toggleRecentBtn.setAttribute('aria-expanded', String(!isRecentCollapsed));
+      viewState = { ...viewState, recentCollapsed: isRecentCollapsed };
+      vscode.setState(viewState);
+    }
+
+    function renderTitleWithRank(problem) {
+      const tier = String(problem && problem.tierText ? problem.tierText : 'Unrated');
+      return '<div class="title-row">'
+        + '<div class="item-title">#' + escapeHtml(problem.problemId) + ' · ' + escapeHtml(problem.title) + '</div>'
+        + '<span class="rank-chip">' + escapeHtml(tier) + '</span>'
+        + '</div>';
     }
 
     function sendSearch(page) {
@@ -595,11 +668,49 @@ class BojSidebarViewProvider {
         return;
       }
 
+      function formatCount(value) {
+        const normalized = Number(value);
+        return Number.isFinite(normalized) ? normalized.toLocaleString('ko-KR') : '-';
+      }
+
+      function formatAverageTries(value) {
+        const normalized = Number(value);
+        return Number.isFinite(normalized) ? normalized.toFixed(2) : '-';
+      }
+
       resultList.innerHTML = items.map((problem) => {
         const tags = Array.isArray(problem.tags) ? problem.tags.slice(0, 4).join(', ') : '';
+        const tagsLine = tags ? '<div class="small">태그 · ' + escapeHtml(tags) + '</div>' : '';
+        const badges = [];
+        if (problem.official === true) {
+          badges.push('공식');
+        }
+
+        if (problem.official === false) {
+          badges.push('비공식');
+        }
+
+        if (problem.isPartial === true) {
+          badges.push('부분점수');
+        }
+
+        if (problem.sprout === true) {
+          badges.push('새싹');
+        }
+
+        const badgeHtml = badges.length > 0
+          ? '<div class="badge-row">' + badges.map((badge) => '<span class="badge">' + escapeHtml(badge) + '</span>').join('') + '</div>'
+          : '';
+
+        const statText = '맞은 사람 ' + formatCount(problem.acceptedUserCount)
+          + ' · 평균 시도 ' + formatAverageTries(problem.averageTries)
+          + ' · 기여자 ' + formatCount(problem.votedUserCount);
+
         return '<div class="item">'
-          + '<div class="item-title">#' + escapeHtml(problem.problemId) + ' · ' + escapeHtml(problem.title) + '</div>'
-          + '<div class="small">' + escapeHtml(problem.tierText) + (tags ? ' · ' + escapeHtml(tags) : '') + '</div>'
+          + renderTitleWithRank(problem)
+          + tagsLine
+          + '<div class="meta-line">' + escapeHtml(statText) + '</div>'
+          + badgeHtml
           + '<div class="row">'
           + '<button data-action="loadResult" data-problem-id="' + escapeHtml(problem.problemId) + '">문제 보기</button>'
           + '<button data-action="openResult" data-problem-id="' + escapeHtml(problem.problemId) + '">웹 열기</button>'
@@ -616,9 +727,11 @@ class BojSidebarViewProvider {
       }
 
       recentList.innerHTML = items.map((problem) => {
+        const tags = Array.isArray(problem.tags) ? problem.tags.slice(0, 4).join(', ') : '';
+        const tagsLine = tags ? '<div class="small">태그 · ' + escapeHtml(tags) + '</div>' : '';
         return '<div class="item">'
-          + '<div class="item-title">#' + escapeHtml(problem.problemId) + ' · ' + escapeHtml(problem.title) + '</div>'
-          + '<div class="small">' + escapeHtml(problem.tierText) + '</div>'
+          + renderTitleWithRank(problem)
+          + tagsLine
           + '<div class="row">'
           + '<button data-action="loadRecent" data-problem-id="' + escapeHtml(problem.problemId) + '">문제 보기</button>'
           + '<button data-action="openRecent" data-problem-id="' + escapeHtml(problem.problemId) + '">웹 열기</button>'
@@ -661,6 +774,10 @@ class BojSidebarViewProvider {
 
     clearRecentBtn.addEventListener('click', () => {
       vscode.postMessage({ type: 'clearRecent' });
+    });
+
+    toggleRecentBtn.addEventListener('click', () => {
+      setRecentCollapsed(!isRecentCollapsed);
     });
 
     openSettingsBtn.addEventListener('click', () => {
@@ -707,7 +824,6 @@ class BojSidebarViewProvider {
         hasPrev = Boolean(message.hasPrev);
         hasNext = Boolean(message.hasNext);
         totalLabel.textContent = '총 ' + Number(message.total || 0) + '개';
-        renderRankCounts(message.tierCounts);
         updatePager();
         return;
       }
@@ -729,7 +845,7 @@ class BojSidebarViewProvider {
 
     renderResultItems([]);
     renderRecents([]);
-    renderRankCounts({});
+    setRecentCollapsed(isRecentCollapsed);
     updatePager();
     vscode.postMessage({ type: 'ready' });
   </script>
@@ -768,6 +884,6 @@ function isProblemSortKey(value) {
     return value === "id" || value === "level" || value === "solved";
 }
 function isSortDirection(value) {
-    return value === "asc" || value === "desc";
+    return value === "asc" || value === "desc" || value === "rankAsc" || value === "rankDesc";
 }
 //# sourceMappingURL=bojSidebarViewProvider.js.map
