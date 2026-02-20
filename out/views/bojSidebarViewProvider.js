@@ -440,6 +440,9 @@ class BojSidebarViewProvider {
       overflow: auto;
       padding-right: 2px;
       min-height: 0;
+      align-content: start;
+      align-items: start;
+      grid-auto-rows: max-content;
     }
 
     #resultList {
@@ -459,6 +462,7 @@ class BojSidebarViewProvider {
       padding: 7px;
       display: grid;
       gap: 6px;
+      align-content: start;
     }
 
     .item-title { line-height: 1.35; color: var(--vscode-editor-foreground); }

@@ -1,8 +1,45 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProblemDetailService = void 0;
+const STATEMENT_ALLOWED_TAGS = new Set([
+    "a",
+    "blockquote",
+    "br",
+    "code",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "s",
+    "span",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul"
+]);
+const VOID_TAGS = new Set(["br", "hr", "img"]);
+const FORBIDDEN_BLOCK_TAG_PATTERN = /<\s*(script|style|iframe|object|embed|form|textarea|select|option|button|svg|math|noscript)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi;
+const FORBIDDEN_SINGLE_TAG_PATTERN = /<\s*(script|style|iframe|object|embed|form|textarea|select|option|button|input|link|meta|base|svg|math|noscript)\b[^>]*\/?>/gi;
 class ProblemDetailService {
-    baseUrl = "https://www.acmicpc.net/problem";
+    baseOrigin = "https://www.acmicpc.net";
+    baseUrl = `${this.baseOrigin}/problem`;
     timeoutMs = 10_000;
     cacheTtlMs = 60_000;
     cache = new Map();
@@ -41,9 +78,15 @@ class ProblemDetailService {
     parseProblemHtml(problemId, html) {
         const titleRaw = this.captureFirst(html, /id="problem_title"[^>]*>([\s\S]*?)<\/span>/i);
         const title = this.cleanText(titleRaw) || `BOJ ${problemId}`;
-        const problemText = this.cleanText(this.captureFirst(html, /<div[^>]*id="problem_description"[^>]*>([\s\S]*?)<\/div>/i));
-        const inputText = this.cleanText(this.captureFirst(html, /<div[^>]*id="problem_input"[^>]*>([\s\S]*?)<\/div>/i));
-        const outputText = this.cleanText(this.captureFirst(html, /<div[^>]*id="problem_output"[^>]*>([\s\S]*?)<\/div>/i));
+        const problemHtmlRaw = this.captureFirst(html, /<div[^>]*id="problem_description"[^>]*>([\s\S]*?)<\/div>/i);
+        const inputHtmlRaw = this.captureFirst(html, /<div[^>]*id="problem_input"[^>]*>([\s\S]*?)<\/div>/i);
+        const outputHtmlRaw = this.captureFirst(html, /<div[^>]*id="problem_output"[^>]*>([\s\S]*?)<\/div>/i);
+        const problemText = this.cleanText(problemHtmlRaw);
+        const inputText = this.cleanText(inputHtmlRaw);
+        const outputText = this.cleanText(outputHtmlRaw);
+        const problemHtml = this.sanitizeStatementHtml(problemHtmlRaw);
+        const inputHtml = this.sanitizeStatementHtml(inputHtmlRaw);
+        const outputHtml = this.sanitizeStatementHtml(outputHtmlRaw);
         const sampleInputs = this.captureSampleMap(html, "sampleinput");
         const sampleOutputs = this.captureSampleMap(html, "sampleoutput");
         const indices = Array.from(new Set([...sampleInputs.keys(), ...sampleOutputs.keys()])).sort((left, right) => left - right);
@@ -62,10 +105,116 @@ class ProblemDetailService {
             title,
             url: `${this.baseUrl}/${problemId}`,
             problem: problemText,
+            problemHtml,
             input: inputText,
+            inputHtml,
             output: outputText,
+            outputHtml,
             testCases
         };
+    }
+    sanitizeStatementHtml(rawHtml) {
+        const stripped = rawHtml
+            .replace(/<!--[\s\S]*?-->/g, "")
+            .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
+            .replace(FORBIDDEN_BLOCK_TAG_PATTERN, "")
+            .replace(FORBIDDEN_SINGLE_TAG_PATTERN, "");
+        return stripped
+            .replace(/<\/?([a-zA-Z0-9:-]+)([^>]*)>/g, (full, rawTagName, rawAttrs) => {
+            const tagName = rawTagName.toLowerCase();
+            if (!STATEMENT_ALLOWED_TAGS.has(tagName)) {
+                return "";
+            }
+            if (full.startsWith("</")) {
+                return VOID_TAGS.has(tagName) ? "" : `</${tagName}>`;
+            }
+            const attrs = this.sanitizeTagAttributes(tagName, rawAttrs);
+            if (attrs.length === 0) {
+                return `<${tagName}>`;
+            }
+            return `<${tagName} ${attrs}>`;
+        })
+            .replace(/\r/g, "")
+            .trim();
+    }
+    sanitizeTagAttributes(tagName, rawAttrs) {
+        const allowedAttrsByTag = {
+            a: new Set(["href", "title"]),
+            img: new Set(["src", "alt", "title", "width", "height"]),
+            td: new Set(["colspan", "rowspan"]),
+            th: new Set(["colspan", "rowspan"]),
+            span: new Set(["title"])
+        };
+        const allowedAttrs = allowedAttrsByTag[tagName];
+        if (!allowedAttrs) {
+            return "";
+        }
+        const attrs = [];
+        const pattern = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+        let match = pattern.exec(rawAttrs);
+        while (match) {
+            const attrName = (match[1] ?? "").toLowerCase();
+            if (attrName.startsWith("on") || !allowedAttrs.has(attrName)) {
+                match = pattern.exec(rawAttrs);
+                continue;
+            }
+            const rawValue = match[2] ?? match[3] ?? match[4] ?? "";
+            const normalized = this.normalizeStatementAttribute(attrName, rawValue);
+            if (!normalized) {
+                match = pattern.exec(rawAttrs);
+                continue;
+            }
+            attrs.push(`${attrName}="${this.escapeHtmlAttribute(normalized)}"`);
+            match = pattern.exec(rawAttrs);
+        }
+        if (tagName === "a" && attrs.some((attr) => attr.startsWith("href="))) {
+            attrs.push('target="_blank"');
+            attrs.push('rel="noopener noreferrer"');
+        }
+        return attrs.join(" ");
+    }
+    normalizeStatementAttribute(name, value) {
+        if (name === "href" || name === "src") {
+            return this.normalizeStatementUrl(value);
+        }
+        if (name === "width" || name === "height" || name === "colspan" || name === "rowspan") {
+            const numberValue = Number(value);
+            if (!Number.isInteger(numberValue) || numberValue <= 0) {
+                return undefined;
+            }
+            return String(numberValue);
+        }
+        const decoded = this.decodeEntities(value).trim();
+        return decoded.length > 0 ? decoded : undefined;
+    }
+    normalizeStatementUrl(raw) {
+        const decoded = this.decodeEntities(raw).trim();
+        if (!decoded) {
+            return undefined;
+        }
+        if (/^(javascript|vbscript|data|file):/i.test(decoded)) {
+            return undefined;
+        }
+        if (decoded.startsWith("//")) {
+            return `https:${decoded}`;
+        }
+        if (decoded.startsWith("/")) {
+            return `${this.baseOrigin}${decoded}`;
+        }
+        if (/^http:\/\//i.test(decoded)) {
+            return `https://${decoded.slice("http://".length)}`;
+        }
+        if (/^https?:\/\//i.test(decoded)) {
+            return decoded;
+        }
+        return undefined;
+    }
+    escapeHtmlAttribute(value) {
+        return value
+            .replaceAll("&", "&amp;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
     }
     captureSampleMap(html, prefix) {
         const pattern = new RegExp(`<section[^>]*id="${prefix}(\\d+)"[\\s\\S]*?<pre[^>]*>([\\s\\S]*?)<\\/pre>[\\s\\S]*?<\\/section>`, "gi");

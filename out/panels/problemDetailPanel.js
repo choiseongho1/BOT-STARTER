@@ -58,6 +58,8 @@ class ProblemDetailPanel {
             });
             this.panel.onDidDispose(() => {
                 this.panel = undefined;
+                this.currentDetail = undefined;
+                this.currentCases = [];
             });
             this.panel.webview.onDidReceiveMessage(async (rawMessage) => {
                 const message = this.parseMessage(rawMessage);
@@ -270,7 +272,7 @@ class ProblemDetailPanel {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <style>
     * { box-sizing: border-box; }
     body {
@@ -347,6 +349,68 @@ class ProblemDetailPanel {
       line-height: 1.55;
       white-space: pre-wrap;
       color: var(--vscode-editor-foreground);
+    }
+
+    .statement-content {
+      color: var(--vscode-editor-foreground);
+      line-height: 1.55;
+      display: grid;
+      gap: 8px;
+      word-break: break-word;
+    }
+
+    .statement-content > :first-child {
+      margin-top: 0;
+    }
+
+    .statement-content > :last-child {
+      margin-bottom: 0;
+    }
+
+    .statement-content p,
+    .statement-content ul,
+    .statement-content ol,
+    .statement-content blockquote,
+    .statement-content table,
+    .statement-content pre,
+    .statement-content h1,
+    .statement-content h2,
+    .statement-content h3,
+    .statement-content h4,
+    .statement-content h5,
+    .statement-content h6 {
+      margin: 0;
+    }
+
+    .statement-content ul,
+    .statement-content ol {
+      padding-left: 20px;
+    }
+
+    .statement-content a {
+      color: var(--vscode-textLink-foreground);
+    }
+
+    .statement-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--vscode-panel-border);
+    }
+
+    .statement-content table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow-x: auto;
+      display: block;
+    }
+
+    .statement-content th,
+    .statement-content td {
+      border: 1px solid var(--vscode-panel-border);
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
     }
 
     .editor-card {
@@ -539,17 +603,17 @@ class ProblemDetailPanel {
 
   <section class="section">
     <h2 class="section-title">문제</h2>
-    <p class="text-block">${escapeHtml(detail.problem || "문제 정보가 없습니다.")}</p>
+    ${this.renderStatementSection(detail.problemHtml, detail.problem, "문제 정보가 없습니다.")}
   </section>
 
   <section class="section">
     <h2 class="section-title">입력</h2>
-    <p class="text-block">${escapeHtml(detail.input || "입력 정보가 없습니다.")}</p>
+    ${this.renderStatementSection(detail.inputHtml, detail.input, "입력 정보가 없습니다.")}
   </section>
 
   <section class="section">
     <h2 class="section-title">출력</h2>
-    <p class="text-block">${escapeHtml(detail.output || "출력 정보가 없습니다.")}</p>
+    ${this.renderStatementSection(detail.outputHtml, detail.output, "출력 정보가 없습니다.")}
   </section>
 
   <section class="section">
@@ -763,6 +827,13 @@ class ProblemDetailPanel {
   </script>
 </body>
 </html>`;
+    }
+    renderStatementSection(html, text, fallback) {
+        if (html.trim().length > 0) {
+            return `<div class="statement-content">${html}</div>`;
+        }
+        const value = text.trim().length > 0 ? text : fallback;
+        return `<p class="text-block">${escapeHtml(value)}</p>`;
     }
     renderTestCasesHtml(cases) {
         if (cases.length === 0) {

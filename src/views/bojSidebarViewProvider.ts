@@ -506,6 +506,9 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
       overflow: auto;
       padding-right: 2px;
       min-height: 0;
+      align-content: start;
+      align-items: start;
+      grid-auto-rows: max-content;
     }
 
     #resultList {
@@ -525,6 +528,7 @@ export class BojSidebarViewProvider implements vscode.WebviewViewProvider {
       padding: 7px;
       display: grid;
       gap: 6px;
+      align-content: start;
     }
 
     .item-title { line-height: 1.35; color: var(--vscode-editor-foreground); }

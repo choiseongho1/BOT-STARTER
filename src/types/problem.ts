@@ -44,7 +44,10 @@ export interface ProblemDetail {
   title: string;
   url: string;
   problem: string;
+  problemHtml: string;
   input: string;
+  inputHtml: string;
   output: string;
+  outputHtml: string;
   testCases: ProblemTestCase[];
 }
