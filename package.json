@@ -3,7 +3,7 @@
   "displayName": "BOJ-STARTER",
   "description": "백준 / Solved.ac 문제 검색 및 실행까지 가능한 Extension",
   "icon": "media/icon.png",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "publisher": "choiseongho",
   "license": "MIT",
   "engines": {
