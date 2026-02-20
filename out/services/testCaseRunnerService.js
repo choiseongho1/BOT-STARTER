@@ -137,7 +137,7 @@ class TestCaseRunnerService {
                 return sourceRun;
             }
             // Fallback: classic compile + run flow for older runtimes.
-            const compile = await this.runWithFallback("javac", javacCandidates, [filePath], cwd);
+            const compile = await this.runWithFallback("javac", javacCandidates, ["-encoding", "UTF-8", filePath], cwd);
             if (compile.code !== 0 || compile.timedOut) {
                 return compile;
             }
